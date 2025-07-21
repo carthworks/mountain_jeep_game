@@ -638,7 +638,7 @@
                 [1, 0, 1.5]    // Rear right
             ];
 
-            jeep.wheels = []; // Store wheel references for animation
+            const wheels = []; // Store wheel references for animation
 
             wheelPositions.forEach(pos => {
                 const wheelGroup = new THREE.Group();
@@ -656,7 +656,7 @@
 
                 wheelGroup.position.set(...pos);
                 jeepGroup.add(wheelGroup);
-                jeep.wheels.push(wheelGroup);
+                wheels.push(wheelGroup);
             });
 
             // Add headlights
@@ -689,6 +689,7 @@
             jeepGroup.add(exhaust);
 
             jeep = jeepGroup;
+            jeep.wheels = wheels; // Assign wheels after jeep is created
             jeep.position.set(0, 1, 0);
             scene.add(jeep);
 
@@ -928,13 +929,18 @@
             camera.lookAt(jeep.position);
         }
 
-        // Check for coin collection
+        // Check for coin collection with enhanced effects
         function checkCoinCollection() {
             coins.forEach((coin, index) => {
                 if (coin.visible && jeep.position.distanceTo(coin.position) < 2) {
                     coin.visible = false;
                     coinsCollected++;
-                    
+
+                    // Play coin collection sound
+                    if (sounds.coinCollect) {
+                        sounds.coinCollect();
+                    }
+
                     // Update combo
                     const currentTime = Date.now();
                     if (currentTime - lastCoinTime < 3000) {
@@ -943,14 +949,15 @@
                         combo = 1;
                     }
                     lastCoinTime = currentTime;
-                    
+
                     // Add score with combo
                     const coinScore = Math.floor(100 * combo);
                     score += coinScore;
-                    
-                    // Create particle effect
+
+                    // Create enhanced particle effect
                     createCoinEffect(coin.position);
-                    
+                    createExplosionParticles(coin.position, 0xFFD700);
+
                     // Update UI
                     document.getElementById('coins').textContent = coinsCollected;
                     document.getElementById('combo').textContent = `x${combo}`;
@@ -958,23 +965,90 @@
             });
         }
 
-        // Create coin collection effect
+        // Create enhanced coin collection effect
         function createCoinEffect(position) {
-            const particleCount = 10;
+            const particleCount = 15;
             for (let i = 0; i < particleCount; i++) {
                 const particle = document.createElement('div');
                 particle.className = 'particle';
                 particle.style.left = `${Math.random() * window.innerWidth}px`;
                 particle.style.top = `${Math.random() * window.innerHeight}px`;
+                particle.style.background = `hsl(${45 + Math.random() * 30}, 100%, 50%)`;
+                particle.style.boxShadow = '0 0 10px currentColor';
                 document.body.appendChild(particle);
-                
+
                 setTimeout(() => {
                     particle.remove();
                 }, 3000);
             }
         }
 
-        // Check for checkpoint crossing
+        // Create 3D explosion particle effect
+        function createExplosionParticles(position, color) {
+            const particleCount = 20;
+            const explosionGeometry = new THREE.BufferGeometry();
+            const positions = new Float32Array(particleCount * 3);
+            const velocities = new Float32Array(particleCount * 3);
+
+            for (let i = 0; i < particleCount; i++) {
+                positions[i * 3] = position.x;
+                positions[i * 3 + 1] = position.y;
+                positions[i * 3 + 2] = position.z;
+
+                // Random explosion direction
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.random() * Math.PI;
+                const speed = Math.random() * 0.5 + 0.2;
+
+                velocities[i * 3] = Math.sin(phi) * Math.cos(theta) * speed;
+                velocities[i * 3 + 1] = Math.cos(phi) * speed;
+                velocities[i * 3 + 2] = Math.sin(phi) * Math.sin(theta) * speed;
+            }
+
+            explosionGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            explosionGeometry.setAttribute('velocity', new THREE.BufferAttribute(velocities, 3));
+
+            const explosionMaterial = new THREE.PointsMaterial({
+                color: color,
+                size: 3.0,
+                transparent: true,
+                opacity: 1.0,
+                blending: THREE.AdditiveBlending
+            });
+
+            const explosion = new THREE.Points(explosionGeometry, explosionMaterial);
+            scene.add(explosion);
+
+            // Animate explosion
+            let life = 1.0;
+            const animateExplosion = () => {
+                life -= 0.02;
+
+                if (life > 0) {
+                    const positions = explosion.geometry.attributes.position.array;
+                    const velocities = explosion.geometry.attributes.velocity.array;
+
+                    for (let i = 0; i < particleCount; i++) {
+                        positions[i * 3] += velocities[i * 3];
+                        positions[i * 3 + 1] += velocities[i * 3 + 1];
+                        positions[i * 3 + 2] += velocities[i * 3 + 2];
+
+                        // Apply gravity
+                        velocities[i * 3 + 1] -= 0.01;
+                    }
+
+                    explosion.geometry.attributes.position.needsUpdate = true;
+                    explosion.material.opacity = life;
+
+                    requestAnimationFrame(animateExplosion);
+                } else {
+                    scene.remove(explosion);
+                }
+            };
+            animateExplosion();
+        }
+
+        // Check for checkpoint crossing with sound
         function checkCheckpoints() {
             if (nextCheckpoint < checkpoints.length) {
                 const checkpoint = checkpoints[nextCheckpoint];
@@ -982,9 +1056,15 @@
                     score += 500;
                     checkpoint.visible = false;
                     nextCheckpoint++;
-                    
-                    // Create checkpoint effect
+
+                    // Play checkpoint sound
+                    if (sounds.checkpoint) {
+                        sounds.checkpoint();
+                    }
+
+                    // Create enhanced checkpoint effect
                     createCheckpointEffect(checkpoint.position);
+                    createExplosionParticles(checkpoint.position, 0x00FF00);
                 }
             }
         }
@@ -1028,14 +1108,14 @@
             renderer.render(scene, camera);
         }
 
-        // Update game state
+        // Update game state with enhanced effects
         function updateGame() {
             const delta = 0.016; // Assume 60fps
-            
+
             // Update time
             time += delta;
             document.getElementById('time').textContent = `${Math.floor(time)}s`;
-            
+
             // Handle acceleration and braking
             if (keys.ArrowUp) {
                 speed = Math.min(speed + acceleration, maxSpeed);
@@ -1049,20 +1129,42 @@
                     speed = Math.min(speed + deceleration, 0);
                 }
             }
-            
-            // Handle turning
+
+            // Handle turning with enhanced physics
             if (keys.ArrowLeft && Math.abs(speed) > 0.01) {
                 jeep.rotation.y += turnSpeed * Math.sign(speed);
-            }
-            if (keys.ArrowRight && Math.abs(speed) > 0.01) {
+                // Add slight tilt for realism
+                jeep.rotation.z = Math.min(jeep.rotation.z + 0.02, 0.1);
+            } else if (keys.ArrowRight && Math.abs(speed) > 0.01) {
                 jeep.rotation.y -= turnSpeed * Math.sign(speed);
+                // Add slight tilt for realism
+                jeep.rotation.z = Math.max(jeep.rotation.z - 0.02, -0.1);
+            } else {
+                // Return to upright position
+                jeep.rotation.z *= 0.9;
             }
-            
+
             // Move jeep forward in its direction
             const direction = new THREE.Vector3(0, 0, -1);
             direction.applyQuaternion(jeep.quaternion);
             direction.multiplyScalar(speed);
             jeep.position.add(direction);
+
+            // Animate wheels
+            if (jeep.wheels && Math.abs(speed) > 0.01) {
+                const wheelRotation = speed * 5;
+                jeep.wheels.forEach(wheel => {
+                    wheel.rotation.x += wheelRotation;
+                });
+            }
+
+            // Update engine sound
+            updateEngineSound();
+
+            // Update dust particles when moving
+            if (Math.abs(speed) > 0.1) {
+                updateDustParticles();
+            }
             
             // Update distance and score
             distance += Math.abs(speed);
@@ -1079,45 +1181,132 @@
             
             jeep.position.y = terrainHeight + 1;
             
-            // Check boundaries
+            // Check boundaries with crash effect
             if (Math.abs(jeep.position.x) > 45 || Math.abs(jeep.position.z) > 45) {
                 gameOver = true;
+
+                // Play crash sound
+                if (sounds.crash) {
+                    sounds.crash();
+                }
+
+                // Create crash explosion
+                createExplosionParticles(jeep.position, 0xFF4444);
+
                 document.getElementById('gameOver').style.display = 'block';
                 document.getElementById('finalScore').textContent = score;
                 document.getElementById('finalDistance').textContent = `${Math.floor(distance)}m`;
                 document.getElementById('finalCoins').textContent = coinsCollected;
             }
-            
-            // Rotate coins
+
+            // Animate coins with floating effect
             coins.forEach(coin => {
                 if (coin.visible) {
                     coin.rotation.z += 0.05;
+                    coin.position.y += Math.sin(time * 2 + coin.position.x) * 0.01;
+
+                    // Animate glow
+                    if (coin.userData.glow) {
+                        coin.userData.glow.material.opacity = 0.3 + Math.sin(time * 3) * 0.2;
+                    }
                 }
             });
-            
-            // Animate particles
+
+            // Animate atmospheric particles
             if (particles) {
                 particles.rotation.y += 0.001;
+                const positions = particles.geometry.attributes.position.array;
+                const velocities = particles.geometry.attributes.velocity.array;
+
+                for (let i = 0; i < positions.length; i += 3) {
+                    positions[i] += velocities[i];
+                    positions[i + 1] += velocities[i + 1];
+                    positions[i + 2] += velocities[i + 2];
+
+                    // Reset particles that go too far
+                    if (Math.abs(positions[i]) > 100) {
+                        positions[i] = (Math.random() - 0.5) * 200;
+                        positions[i + 1] = Math.random() * 30 + 5;
+                        positions[i + 2] = (Math.random() - 0.5) * 200;
+                    }
+                }
+                particles.geometry.attributes.position.needsUpdate = true;
             }
-            
+
             // Animate checkpoints
             checkpoints.forEach(checkpoint => {
                 if (checkpoint.visible) {
                     checkpoint.rotation.z += 0.02;
+                    checkpoint.material.opacity = 0.7 + Math.sin(time * 2) * 0.2;
                 }
             });
-            
+
             // Check for coin collection
             checkCoinCollection();
-            
+
             // Check checkpoints
             checkCheckpoints();
-            
+
             // Update camera
             updateCamera();
-            
+
             // Update minimap
             updateMinimap();
+        }
+
+        // Update dust particles
+        function updateDustParticles() {
+            if (!dustParticles) return;
+
+            const positions = dustParticles.geometry.attributes.position.array;
+            const velocities = dustParticles.geometry.attributes.velocity.array;
+            const lifetimes = dustParticles.geometry.attributes.lifetime.array;
+
+            // Add new dust particles behind the jeep
+            for (let i = 0; i < 5; i++) {
+                const index = Math.floor(Math.random() * (positions.length / 3));
+                const i3 = index * 3;
+
+                if (lifetimes[index] <= 0) {
+                    // Position behind jeep
+                    const behindJeep = new THREE.Vector3(0, 0, 2);
+                    behindJeep.applyQuaternion(jeep.quaternion);
+                    behindJeep.add(jeep.position);
+                    behindJeep.x += (Math.random() - 0.5) * 2;
+                    behindJeep.z += (Math.random() - 0.5) * 2;
+
+                    positions[i3] = behindJeep.x;
+                    positions[i3 + 1] = behindJeep.y;
+                    positions[i3 + 2] = behindJeep.z;
+
+                    velocities[i3] = (Math.random() - 0.5) * 0.1;
+                    velocities[i3 + 1] = Math.random() * 0.05 + 0.02;
+                    velocities[i3 + 2] = (Math.random() - 0.5) * 0.1;
+
+                    lifetimes[index] = 1.0;
+                }
+            }
+
+            // Update existing particles
+            for (let i = 0; i < positions.length; i += 3) {
+                const index = i / 3;
+                if (lifetimes[index] > 0) {
+                    positions[i] += velocities[i];
+                    positions[i + 1] += velocities[i + 1];
+                    positions[i + 2] += velocities[i + 2];
+
+                    lifetimes[index] -= 0.02;
+
+                    // Apply gravity and air resistance
+                    velocities[i + 1] -= 0.001;
+                    velocities[i] *= 0.98;
+                    velocities[i + 2] *= 0.98;
+                }
+            }
+
+            dustParticles.geometry.attributes.position.needsUpdate = true;
+            dustParticles.geometry.attributes.velocity.needsUpdate = true;
+            dustParticles.geometry.attributes.lifetime.needsUpdate = true;
         }
 
         // Restart game
